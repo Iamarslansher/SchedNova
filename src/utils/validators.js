@@ -34,12 +34,38 @@ export const subjectSchema = z.object({
   weeklyLectures: z.number().min(1, "Weekly lectures must be at least 1"),
   duration: z.number().min(30, "Lecture duration must be at least 30 minutes"),
   type: z.enum(["Theory", "Lab"]),
+  teachingEnvironment: z.enum(["Classroom", "Laboratory"]),
 });
 
 export const sectionSchema = z.object({
   name: z.string().min(1, "Section name is required"),
   semester: z.string().min(1, "Semester or class is required"),
   studentCount: z.number().min(1, "Student count must be at least 1"),
+});
+
+export const roomSchema = z.object({
+  name: z.string().min(1, "Room name is required"),
+  type: z.enum(["Room", "Lab"]),
+  capacity: z.number().min(1, "Capacity must be at least 1"),
+  building: z.string().optional(),
+  floor: z.string().optional(),
+  supportedSubjects: z.array(z.string()).optional(),
+});
+
+export const labSchema = z.object({
+  name: z.string().min(1, "Lab name is required"),
+  type: z.literal("Lab"),
+  capacity: z.number().min(1, "Capacity must be at least 1"),
+  labType: z.enum([
+    "Computer Lab",
+    "Physics Lab",
+    "Chemistry Lab",
+    "AI Lab",
+    "Other",
+  ]),
+  building: z.string().optional(),
+  floor: z.string().optional(),
+  supportedSubjects: z.array(z.string()).optional(),
 });
 
 export const constraintsSchema = z.object({

@@ -42,6 +42,7 @@ export const createLectureTasks = ({ subjects }) => {
         duration: subject.duration || 60,
         subjectId: subject.id || subject.name,
         isLab: subject.type === "Lab" || subject.type === "Practical",
+        teachingEnvironment: subject.teachingEnvironment || "Classroom",
       });
     }
     return lectures;
@@ -139,7 +140,13 @@ const findBestTeacher = (task, teachers, dayName, timeSlot, schedule) => {
 const isRoomAvailable = (room, dayName, timeSlot, schedule) => {
   const roomBookings = Object.values(schedule)
     .flat()
-    .filter((lec) => lec.room === room.name && lec.day === dayName);
+    .filter((lec) => {
+      // Check both room and roomOrLab fields for compatibility
+      return (
+        (lec.room === room.name || lec.roomOrLab === room.name) &&
+        lec.day === dayName
+      );
+    });
 
   return !roomBookings.some(
     (booking) =>
@@ -148,31 +155,43 @@ const isRoomAvailable = (room, dayName, timeSlot, schedule) => {
 };
 
 /**
- * Find best room for a subject
+ * Find best room or lab for a subject based on teaching environment
  */
-const findBestRoom = (task, rooms, dayName, timeSlot, sectionCapacity) => {
-  if (!rooms || rooms.length === 0) return null;
+const findBestRoom = (
+  task,
+  rooms,
+  labs,
+  dayName,
+  timeSlot,
+  schedule,
+  sectionCapacity,
+) => {
+  // Determine which resource pool to use based on teaching environment
+  const isLaboratory = task.teachingEnvironment === "Laboratory";
+  const resourcePool = isLaboratory ? labs || [] : rooms || [];
 
-  // Theory subjects go to rooms, practical/labs go to labs
-  const isLabSubject = task.isLab;
+  if (!resourcePool || resourcePool.length === 0) return null;
 
-  const suitableRooms = rooms.filter(
-    (room) =>
-      room.capacity >= sectionCapacity &&
-      ((isLabSubject && room.type === "Lab") ||
-        (!isLabSubject && room.type === "Room")) &&
-      (!room.supportedSubjects || room.supportedSubjects.includes(task.title)),
+  // Filter by capacity and subject support
+  const suitableResources = resourcePool.filter(
+    (resource) =>
+      resource.capacity >= sectionCapacity &&
+      (!resource.supportedSubjects ||
+        resource.supportedSubjects.length === 0 ||
+        resource.supportedSubjects.includes(task.title)),
   );
 
-  if (suitableRooms.length === 0) return null;
+  if (suitableResources.length === 0) return null;
 
-  const availableRooms = suitableRooms.filter((room) =>
-    isRoomAvailable(room, dayName, timeSlot, schedule),
+  // Check availability for each resource
+  const availableResources = suitableResources.filter((resource) =>
+    isRoomAvailable(resource, dayName, timeSlot, schedule),
   );
 
-  return availableRooms.length > 0
-    ? availableRooms[0]
-    : suitableRooms[0] || null;
+  // Return first available, or first suitable as fallback
+  return availableResources.length > 0
+    ? availableResources[0]
+    : suitableResources[0] || null;
 };
 
 /**
@@ -190,17 +209,30 @@ const hasSectionConflict = (section, dayName, timeSlot, schedule) => {
 };
 
 /**
- * Main advanced timetable generation function
+ * Main advanced timetable generation function with room/lab resource matching
  */
 export const generateAdvancedTimetable = ({
   subjects,
   teachers = [],
   sections = [],
   rooms = [],
+  labs = [],
   constraints = {},
   institute,
 }) => {
+  console.log("=== Timetable Generation Started ===");
+  console.log("Input params:", {
+    subjectsCount: subjects?.length,
+    teachersCount: teachers?.length,
+    sectionsCount: sections?.length,
+    roomsCount: rooms?.length,
+    labsCount: labs?.length,
+    hasConstraints: !!constraints,
+    hasInstitute: !!institute,
+  });
+
   if (!subjects || subjects.length === 0) {
+    console.warn("No subjects provided");
     return {
       Monday: [],
       Tuesday: [],
@@ -211,13 +243,16 @@ export const generateAdvancedTimetable = ({
   }
 
   const slots = buildTimeSlots({
-    startTime: institute.startTime,
-    endTime: institute.endTime,
-    lectureDuration: institute.lectureDuration,
-    breakDuration: constraints.breakDuration || 0,
+    startTime: institute?.startTime || "08:00",
+    endTime: institute?.endTime || "16:00",
+    lectureDuration: institute?.lectureDuration || 60,
+    breakDuration: constraints?.breakDuration || 0,
   });
 
+  console.log(`Created ${slots.length} time slots`);
+
   if (slots.length === 0) {
+    console.error("No time slots available");
     return {
       Monday: [],
       Tuesday: [],
@@ -228,7 +263,9 @@ export const generateAdvancedTimetable = ({
   }
 
   const tasks = createLectureTasks({ subjects });
-  const workingDays = institute.workingDays || [
+  console.log(`Created ${tasks.length} lecture tasks`);
+
+  const workingDays = institute?.workingDays || [
     "Monday",
     "Tuesday",
     "Wednesday",
@@ -242,17 +279,25 @@ export const generateAdvancedTimetable = ({
   });
 
   const sectionLabel =
-    sections.length > 0
+    sections && sections.length > 0
       ? `${sections[0]?.semester ? `${sections[0]?.semester} ` : ""}${
           sections[0]?.name || ""
         }`.trim()
       : "All";
 
-  const sectionCapacity = sections[0]?.studentCount || 50;
+  const sectionCapacity =
+    sections && sections.length > 0 ? sections[0]?.studentCount || 50 : 50;
+
+  console.log(`Section: ${sectionLabel}, Capacity: ${sectionCapacity}`);
+  console.log(
+    `Available rooms: ${rooms?.length || 0}, Available labs: ${labs?.length || 0}`,
+  );
 
   // Try to place each lecture
   let slotIndex = 0;
   let dayIndex = 0;
+  let placedCount = 0;
+  let failedCount = 0;
 
   for (const task of tasks) {
     let placed = false;
@@ -285,8 +330,16 @@ export const generateAdvancedTimetable = ({
           schedule,
         );
 
-        // Find best room
-        const room = findBestRoom(task, rooms, dayName, slot, sectionCapacity);
+        // Find best room or lab based on teaching environment
+        const resource = findBestRoom(
+          task,
+          rooms,
+          labs,
+          dayName,
+          slot,
+          schedule,
+          sectionCapacity,
+        );
 
         // Create lecture entry
         const lecture = {
@@ -299,13 +352,16 @@ export const generateAdvancedTimetable = ({
           startTime: slot.start,
           endTime: slot.end,
           teacher: teacher ? teacher.name : "Not Assigned",
-          room: room ? room.name : "TBA",
+          roomOrLab: resource ? resource.name : "TBA",
+          locationType: task.teachingEnvironment || "Classroom",
+          room: resource ? resource.name : "TBA", // For backward compatibility
           section: sectionLabel,
           subject: task.title,
         };
 
         schedule[dayName].push(lecture);
         placed = true;
+        placedCount++;
         dayIndex++;
         break;
       }
@@ -322,7 +378,7 @@ export const generateAdvancedTimetable = ({
       for (let day of workingDays) {
         for (let slot of slots) {
           const slotOccupied = schedule[day].some(
-            (lec) => lec.start === slot.start,
+            (lec) => lec.start === slot.start && lec.section === sectionLabel,
           );
 
           if (!slotOccupied) {
@@ -333,7 +389,15 @@ export const generateAdvancedTimetable = ({
               slot,
               schedule,
             );
-            const room = findBestRoom(task, rooms, day, slot, sectionCapacity);
+            const resource = findBestRoom(
+              task,
+              rooms,
+              labs,
+              day,
+              slot,
+              schedule,
+              sectionCapacity,
+            );
 
             schedule[day].push({
               id: task.id,
@@ -345,12 +409,15 @@ export const generateAdvancedTimetable = ({
               startTime: slot.start,
               endTime: slot.end,
               teacher: teacher ? teacher.name : "Not Assigned",
-              room: room ? room.name : "TBA",
+              roomOrLab: resource ? resource.name : "TBA",
+              locationType: task.teachingEnvironment || "Classroom",
+              room: resource ? resource.name : "TBA", // For backward compatibility
               section: sectionLabel,
               subject: task.title,
             });
 
             placed = true;
+            placedCount++;
             break;
           }
         }
@@ -359,11 +426,18 @@ export const generateAdvancedTimetable = ({
     }
 
     if (!placed) {
+      failedCount++;
       console.warn(
         `Failed to place lecture: ${task.title} - no available slot found`,
       );
     }
   }
+
+  console.log(`=== Generation Complete ===`);
+  console.log(
+    `Lectures placed: ${placedCount}/${tasks.length}, Failed: ${failedCount}`,
+  );
+  console.log("Final schedule:", schedule);
 
   return schedule;
 };

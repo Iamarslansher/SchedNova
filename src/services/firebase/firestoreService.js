@@ -7,22 +7,27 @@ import {
   getDocs,
   query,
   serverTimestamp,
+  where,
 } from "firebase/firestore";
-import { db } from "./firebaseConfig";
+import { db, auth } from "./firebaseConfig";
 
 export const saveDocument = async (collectionName, data, id) => {
-  const payload = {
+  // ensure ownership is attached to every document
+  const resolvedUserId = data?.userId || auth?.currentUser?.uid || null;
+
+  const base = {
     ...data,
+    userId: resolvedUserId,
     updatedAt: serverTimestamp(),
   };
 
   if (id) {
-    await setDoc(doc(db, collectionName, id), payload, { merge: true });
+    await setDoc(doc(db, collectionName, id), base, { merge: true });
     return id;
   }
 
   const reference = await addDoc(collection(db, collectionName), {
-    ...payload,
+    ...base,
     createdAt: serverTimestamp(),
   });
 
@@ -44,6 +49,12 @@ export const queryDocuments = async (collectionName, constraints = []) => {
     id: docSnapshot.id,
     ...docSnapshot.data(),
   }));
+};
+
+// helper: get all documents in a collection for a specific userId
+export const getDocumentsByUser = async (collectionName, userId) => {
+  if (!userId) return [];
+  return queryDocuments(collectionName, [where("userId", "==", userId)]);
 };
 
 export const saveInstitute = async (instituteId, data) =>

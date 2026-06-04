@@ -5,6 +5,8 @@ const initialState = {
   teachers: [],
   subjects: [],
   sections: [],
+  rooms: [],
+  labs: [],
   constraints: {},
   schedule: {},
 };
@@ -25,6 +27,12 @@ export const scheduleSlice = createSlice({
     setSections(state, action) {
       state.sections = action.payload;
     },
+    setRooms(state, action) {
+      state.rooms = action.payload;
+    },
+    setLabs(state, action) {
+      state.labs = action.payload;
+    },
     setConstraints(state, action) {
       state.constraints = action.payload;
     },
@@ -42,6 +50,8 @@ export const {
   setTeachers,
   setSubjects,
   setSections,
+  setRooms,
+  setLabs,
   setConstraints,
   setSchedule,
   resetSchedule,

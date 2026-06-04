@@ -2,7 +2,10 @@ import { useState, useEffect } from "react";
 import { Plus } from "lucide-react";
 import AppLayout from "../../layouts/AppLayout";
 import AddRoomModal from "../../components/modals/AddRoomModal";
-import { queryDocuments } from "../../services/firebase/firestoreService";
+import {
+  queryDocuments,
+  getDocumentsByUser,
+} from "../../services/firebase/firestoreService";
 
 function RoomLabManagement() {
   const [rooms, setRooms] = useState([]);
@@ -17,9 +20,8 @@ function RoomLabManagement() {
     try {
       setLoading(true);
       const userId = localStorage.getItem("userId");
-      const data = await queryDocuments("rooms");
-      const userRooms = data.filter((room) => room.userId === userId);
-      setRooms(userRooms);
+      const data = await getDocumentsByUser("rooms", userId);
+      setRooms(data || []);
     } catch (error) {
       console.error("Error fetching rooms:", error);
     } finally {

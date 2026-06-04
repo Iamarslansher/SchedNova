@@ -44,6 +44,7 @@ function AddSubjectModal({ isOpen, onClose, onSubjectAdded }) {
         credits: parseInt(formData.credits) || 0,
         hoursPerWeek: parseInt(formData.hoursPerWeek) || 0,
         instituteId: userId,
+        userId,
         createdAt: new Date().toISOString(),
       };
 

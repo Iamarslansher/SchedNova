@@ -36,6 +36,7 @@ function AddTeacherModal({ isOpen, onClose, onTeacherAdded }) {
       const teacherData = {
         ...formData,
         instituteId: userId, // Link to current institute
+        userId,
         createdAt: new Date().toISOString(),
       };
 

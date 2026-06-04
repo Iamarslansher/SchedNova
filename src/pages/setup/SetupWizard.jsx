@@ -4,12 +4,15 @@ import { useNavigate } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import toast from "react-hot-toast";
+import { Plus, Trash2 } from "lucide-react";
 import AppLayout from "../../layouts/AppLayout";
 import {
   setInstitute,
   setTeachers,
   setSubjects,
   setSections,
+  setRooms,
+  setLabs,
   setConstraints,
   setSchedule,
 } from "../../store/scheduleSlice";
@@ -22,13 +25,16 @@ import {
   subjectSchema,
   teacherSchema,
 } from "../../utils/validators";
+import AddRoomLabWizardModal from "../../components/modals/AddRoomLabWizardModal";
 
 const steps = [
   { id: 1, title: "Institute Info" },
   { id: 2, title: "Teachers" },
   { id: 3, title: "Subjects" },
   { id: 4, title: "Sections" },
-  { id: 5, title: "Constraints" },
+  { id: 5, title: "Rooms & Labs" },
+  { id: 6, title: "Constraints" },
+  { id: 7, title: "Generate" },
 ];
 
 const workingDaysOptions = [
@@ -63,6 +69,13 @@ function SetupWizard() {
       ? scheduleState.sections
       : storedData.sections || [],
   );
+  const [rooms, setRoomsState] = useState(
+    scheduleState.rooms?.length > 0 ? scheduleState.rooms : [],
+  );
+  const [labs, setLabsState] = useState(
+    scheduleState.labs?.length > 0 ? scheduleState.labs : [],
+  );
+  const [isRoomLabModalOpen, setIsRoomLabModalOpen] = useState(false);
 
   const instituteForm = useForm({
     resolver: zodResolver(instituteSchema),
@@ -95,6 +108,7 @@ function SetupWizard() {
       weeklyLectures: 2,
       duration: 50,
       type: "Theory",
+      teachingEnvironment: "Classroom",
     },
   });
 
@@ -170,6 +184,7 @@ function SetupWizard() {
         weeklyLectures: data.weeklyLectures,
         duration: data.duration,
         type: data.type,
+        teachingEnvironment: data.teachingEnvironment,
         instituteId: userId,
         userId,
         createdAt: new Date().toISOString(),
@@ -203,46 +218,116 @@ function SetupWizard() {
     toast.success("Section added.");
   };
 
-  const handleConstraintsSubmit = (data) => {
-    dispatch(setConstraints(data));
-    storageUtils.saveConstraints(data);
+  const handleAddResourceToWizard = (resource) => {
+    const userId = localStorage.getItem("userId");
+    const resourceWithUserId = {
+      ...resource,
+      userId,
+    };
 
-    // Get the most recent data from state (could be from props or Redux)
-    const instituteData = scheduleState.institute;
-    const subjectsData = subjects;
-    const teachersData = teachers;
-    const sectionsData = sections;
-
-    // Validate we have subjects to schedule
-    if (!subjectsData || subjectsData.length === 0) {
-      toast.error(
-        "Please add at least one subject before generating timetable.",
-      );
-      return;
+    if (resource.type === "Lab") {
+      const next = [...labs, resourceWithUserId];
+      setLabsState(next);
+      dispatch(setLabs(next));
+      toast.success("Lab added to wizard.");
+    } else {
+      const next = [...rooms, resourceWithUserId];
+      setRoomsState(next);
+      dispatch(setRooms(next));
+      toast.success("Room added to wizard.");
     }
+  };
 
-    console.log("Generating timetable with data:", {
-      subjects: subjectsData,
-      teachers: teachersData,
-      sections: sectionsData,
-      constraints: data,
-      institute: instituteData,
-    });
+  const handleRemoveRoom = (id) => {
+    setRoomsState((prev) => prev.filter((r) => r.id !== id));
+    toast.success("Room removed.");
+  };
 
-    // Generate the timetable with the collected data
-    const generatedSchedule = generateAdvancedTimetable({
-      subjects: subjectsData,
-      teachers: teachersData,
-      sections: sectionsData,
-      rooms: [], // Rooms can be managed separately
-      constraints: data,
-      institute: instituteData,
-    });
+  const handleRemoveLab = (id) => {
+    setLabsState((prev) => prev.filter((l) => l.id !== id));
+    toast.success("Lab removed.");
+  };
 
-    dispatch(setSchedule(generatedSchedule));
-    storageUtils.saveSchedule(generatedSchedule);
-    toast.success("Timetable generated successfully!");
-    navigate("/timetable");
+  const handleConstraintsSubmit = (data) => {
+    try {
+      dispatch(setConstraints(data));
+      storageUtils.saveConstraints(data);
+
+      // Get the most recent data from state
+      const instituteData = scheduleState.institute;
+      const subjectsData = subjects;
+      const teachersData = teachers;
+      const sectionsData = sections;
+      const roomsData = rooms;
+      const labsData = labs;
+
+      // Validate we have subjects to schedule
+      if (!subjectsData || subjectsData.length === 0) {
+        toast.error(
+          "Please add at least one subject before generating timetable.",
+        );
+        return;
+      }
+
+      if (!roomsData || roomsData.length === 0) {
+        toast.error(
+          "Please add at least one room before generating timetable.",
+        );
+        return;
+      }
+
+      console.log("Generating timetable with data:", {
+        subjects: subjectsData,
+        teachers: teachersData,
+        sections: sectionsData,
+        rooms: roomsData,
+        labs: labsData,
+        constraints: data,
+        institute: instituteData,
+      });
+
+      // Generate the timetable with the collected data
+      const generatedSchedule = generateAdvancedTimetable({
+        subjects: subjectsData,
+        teachers: teachersData,
+        sections: sectionsData,
+        rooms: roomsData,
+        labs: labsData,
+        constraints: data,
+        institute: instituteData,
+      });
+
+      console.log("Generated schedule:", generatedSchedule);
+
+      if (!generatedSchedule) {
+        throw new Error("Timetable generation returned null/undefined");
+      }
+
+      const hasLectures = Object.values(generatedSchedule).some(
+        (day) => day && day.length > 0,
+      );
+
+      if (!hasLectures) {
+        toast.error(
+          "Timetable generated but contains no lectures. Please check your subjects, teachers, and constraints.",
+        );
+        console.warn("Warning: Generated timetable has no lectures", {
+          subjects: subjectsData,
+          teachers: teachersData,
+          sections: sectionsData,
+        });
+      }
+
+      dispatch(setSchedule(generatedSchedule));
+      dispatch(setRooms(rooms));
+      dispatch(setLabs(labs));
+      storageUtils.saveSchedule(generatedSchedule);
+      toast.success("Timetable generated successfully!");
+      navigate("/timetable");
+    } catch (error) {
+      console.error("Error generating timetable:", error);
+      toast.error(`Timetable generation failed: ${error.message}`);
+    }
   };
 
   return (
@@ -563,6 +648,24 @@ function SetupWizard() {
                       </span>
                     )}
                   </label>
+                  <label className="space-y-2 text-sm text-slate-200">
+                    <span>Teaching Environment</span>
+                    <select
+                      {...subjectForm.register("teachingEnvironment")}
+                      className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-slate-100 outline-none"
+                    >
+                      <option value="Classroom">Classroom</option>
+                      <option value="Laboratory">Laboratory</option>
+                    </select>
+                    {subjectForm.formState.errors.teachingEnvironment && (
+                      <span className="text-xs text-rose-400">
+                        {
+                          subjectForm.formState.errors.teachingEnvironment
+                            .message
+                        }
+                      </span>
+                    )}
+                  </label>
                 </div>
 
                 <div className="flex flex-wrap items-center gap-4">
@@ -601,7 +704,8 @@ function SetupWizard() {
                           {subject.name}
                         </p>
                         <p className="text-sm text-slate-400">
-                          {subject.weeklyLectures} lectures • {subject.type}
+                          {subject.weeklyLectures} lectures • {subject.type} •{" "}
+                          {subject.teachingEnvironment}
                         </p>
                       </div>
                     ))
@@ -671,7 +775,7 @@ function SetupWizard() {
                     onClick={() => setActiveStep(5)}
                     className="rounded-2xl border border-slate-700 px-6 py-3 text-sm text-slate-300 hover:border-slate-500"
                   >
-                    Continue to constraints
+                    Continue to rooms & labs
                   </button>
                 </div>
               </form>
@@ -706,6 +810,130 @@ function SetupWizard() {
           )}
 
           {activeStep === 5 && (
+            <div className="space-y-6">
+              <div className="rounded-3xl border border-slate-800 bg-slate-950/80 p-8">
+                <div className="flex items-center justify-between mb-6">
+                  <div>
+                    <h2 className="text-2xl font-bold text-white">
+                      Manage Rooms & Laboratories
+                    </h2>
+                    <p className="mt-2 text-slate-300">
+                      Add classrooms and laboratories where subjects will be
+                      taught.
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setIsRoomLabModalOpen(true)}
+                    className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-white hover:bg-blue-700 transition font-medium"
+                  >
+                    <Plus className="h-5 w-5" />
+                    Add Room/Lab
+                  </button>
+                </div>
+
+                <div className="space-y-4">
+                  <div>
+                    <h3 className="text-lg font-semibold text-white mb-3">
+                      Classrooms
+                    </h3>
+                    {rooms.length === 0 ? (
+                      <p className="text-sm text-slate-400">
+                        No classrooms added yet.
+                      </p>
+                    ) : (
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        {rooms.map((room) => (
+                          <div
+                            key={room.id}
+                            className="rounded-2xl border border-slate-700 bg-slate-900 p-4 flex items-start justify-between"
+                          >
+                            <div className="flex-1">
+                              <p className="font-semibold text-white">
+                                {room.name}
+                              </p>
+                              <p className="text-sm text-slate-400">
+                                Capacity: {room.capacity} students
+                              </p>
+                              {(room.building || room.floor) && (
+                                <p className="text-xs text-slate-500 mt-1">
+                                  {room.building && `Building ${room.building}`}
+                                  {room.building && room.floor && " • "}
+                                  {room.floor && `Floor ${room.floor}`}
+                                </p>
+                              )}
+                            </div>
+                            <button
+                              onClick={() => handleRemoveRoom(room.id)}
+                              className="text-red-400 hover:text-red-300 transition"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {labs.length > 0 && (
+                    <div>
+                      <h3 className="text-lg font-semibold text-white mb-3">
+                        Laboratories
+                      </h3>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        {labs.map((lab) => (
+                          <div
+                            key={lab.id}
+                            className="rounded-2xl border border-slate-700 bg-slate-900 p-4 flex items-start justify-between"
+                          >
+                            <div className="flex-1">
+                              <p className="font-semibold text-white">
+                                {lab.name}
+                              </p>
+                              <p className="text-sm text-slate-400">
+                                {lab.labType} • Capacity: {lab.capacity}
+                              </p>
+                              {(lab.building || lab.floor) && (
+                                <p className="text-xs text-slate-500 mt-1">
+                                  {lab.building && `Building ${lab.building}`}
+                                  {lab.building && lab.floor && " • "}
+                                  {lab.floor && `Floor ${lab.floor}`}
+                                </p>
+                              )}
+                            </div>
+                            <button
+                              onClick={() => handleRemoveLab(lab.id)}
+                              className="text-red-400 hover:text-red-300 transition"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex flex-wrap items-center gap-4 mt-8">
+                  <button
+                    onClick={() => setActiveStep(6)}
+                    disabled={rooms.length === 0}
+                    className="rounded-2xl bg-brand-500 px-6 py-3 text-sm font-semibold text-slate-950 hover:bg-brand-400 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Continue to constraints
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveStep(4)}
+                    className="rounded-2xl border border-slate-700 px-6 py-3 text-sm text-slate-300 hover:border-slate-500"
+                  >
+                    Back to sections
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activeStep === 6 && (
             <form
               onSubmit={constraintsForm.handleSubmit(handleConstraintsSubmit)}
               className="space-y-6"
@@ -783,6 +1011,12 @@ function SetupWizard() {
           )}
         </div>
       </div>
+
+      <AddRoomLabWizardModal
+        isOpen={isRoomLabModalOpen}
+        onClose={() => setIsRoomLabModalOpen(false)}
+        onResourceAdded={handleAddResourceToWizard}
+      />
     </AppLayout>
   );
 }
