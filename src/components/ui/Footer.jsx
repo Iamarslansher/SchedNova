@@ -82,7 +82,7 @@ function Footer() {
             </h3>
             <div className="mt-4 flex gap-4">
               <a
-                href="https://github.com"
+                href="https://github.com/Iamarslansher"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center justify-center h-10 w-10 rounded-full bg-slate-900 text-slate-400 hover:bg-slate-800 hover:text-white transition"
@@ -91,7 +91,7 @@ function Footer() {
                 <Github className="h-5 w-5" />
               </a>
               <a
-                href="https://linkedin.com"
+                href="https://www.linkedin.com/in/arsalan-sher-0bb9b32a8/"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center justify-center h-10 w-10 rounded-full bg-slate-900 text-slate-400 hover:bg-slate-800 hover:text-white transition"
@@ -100,7 +100,7 @@ function Footer() {
                 <Linkedin className="h-5 w-5" />
               </a>
               <a
-                href="https://wa.me"
+                href="https://wa.me/923072973307"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center justify-center h-10 w-10 rounded-full bg-slate-900 text-slate-400 hover:bg-slate-800 hover:text-white transition"
